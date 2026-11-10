@@ -1,0 +1,19 @@
+{
+  "profile": "standard",
+  "dataset_id": "ds000221",
+  "n_subjects": 20,
+  "image_size": 256,
+  "slices_per_subject": 48,
+  "epochs": 25,
+  "qa_epochs": 12,
+  "batch_size": 4,
+  "base_channels": 24,
+  "learning_rate": 0.001,
+  "patience": 7,
+  "seed": 42,
+  "num_workers": 0,
+  "noise_kind": "mixed",
+  "root": "/content/mri_group06",
+  "local_nifti_dir": "",
+  "resume": true
+}
