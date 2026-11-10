@@ -1,0 +1,405 @@
+%%writefile index.html
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Group 06 | Cranial MRI IQA & U-Net Enhancement Workstation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #060911; color: #F8FAFC; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .glass { background: rgba(15, 23, 42, 0.78); backdrop-filter: blur(16px); border: 1px solid rgba(148, 163, 184, 0.12); }
+    .comparison-slider { position: relative; overflow: hidden; user-select: none; }
+    .comparison-overlay { position: absolute; top: 0; left: 0; height: 100%; width: 50%; overflow: hidden; }
+    input[type=range]::-webkit-slider-thumb { cursor: pointer; }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- Top PACS Header -->
+  <header class="h-16 glass px-6 flex items-center justify-between border-b border-slate-800/80 z-20">
+    <div class="flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/30 flex items-center justify-center text-cyan-400 font-bold mono shadow-inner">
+        G06
+      </div>
+      <div>
+        <div class="flex items-center gap-2.5">
+          <h1 class="text-sm font-bold tracking-wide text-white">CRANIAL MRI QUALITY & ENHANCEMENT</h1>
+          <span class="text-[10px] mono px-2 py-0.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">RESIDUAL U-NET + QUALITYNET</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Automated No-Reference PSNR/SSIM Regression & Artifact Restoration</p>
+      </div>
+    </div>
+
+    <!-- Held-Out Model Benchmark Pill -->
+    <div class="hidden xl:flex items-center gap-6 px-4 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+      <div>
+        <span class="text-slate-500">Held-Out Test Acc:</span>
+        <span id="hdr-acc" class="mono font-semibold text-white ml-1">—</span>
+      </div>
+      <div class="h-3 w-[1px] bg-slate-800"></div>
+      <div>
+        <span class="text-slate-500">Balanced Acc:</span>
+        <span id="hdr-bal" class="mono font-semibold text-cyan-400 ml-1">—</span>
+      </div>
+      <div class="h-3 w-[1px] bg-slate-800"></div>
+      <div>
+        <span class="text-slate-500">Model Grade:</span>
+        <span id="hdr-grade" class="mono font-semibold text-emerald-400 ml-1">—</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <span id="status-pill" class="text-[11px] mono px-3 py-1.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800">
+        ● PIPELINE READY
+      </span>
+      <label class="cursor-pointer bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-semibold text-xs px-4 py-2.5 rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center gap-2">
+        <span>+ Upload MRI (.PNG / .NII.GZ)</span>
+        <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff,.nii,.nii.gz" class="hidden" onchange="uploadScan(event)">
+      </label>
+    </div>
+  </header>
+
+  <!-- Main Radiology Grid -->
+  <main class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden">
+
+    <!-- Left Panel: Controls & EDA Slice Telemetry -->
+    <aside class="col-span-3 glass rounded-2xl p-5 flex flex-col justify-between overflow-y-auto">
+      <div class="space-y-6">
+        <!-- Viewport Mode Switcher -->
+        <div>
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Diagnostic Viewport Mode</h2>
+          <div class="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950/80 border border-slate-800">
+            <button onclick="setViewMode('split')" id="mode-split" class="text-xs py-2 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-medium transition">
+              Split Curtain
+            </button>
+            <button onclick="setViewMode('side')" id="mode-side" class="text-xs py-2 rounded-lg text-slate-400 hover:text-white transition">
+              Side-by-Side
+            </button>
+            <button onclick="setViewMode('error')" id="mode-error" class="text-xs py-2 rounded-lg text-slate-400 hover:text-white transition">
+              Magma Diff
+            </button>
+          </div>
+        </div>
+
+        <!-- PACS Windowing Sliders -->
+        <div class="border-t border-slate-800/80 pt-5">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Radiological Windowing</h2>
+            <button onclick="resetWindow()" class="text-[10px] text-cyan-400 hover:underline">Reset</button>
+          </div>
+          <div class="space-y-3.5">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-400">Brightness (Level)</span>
+                <span id="lbl-bright" class="mono text-slate-300">100%</span>
+              </div>
+              <input type="range" id="rng-bright" min="50" max="160" value="100" oninput="applyWindow()" class="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-400">Contrast (Width)</span>
+                <span id="lbl-contrast" class="mono text-slate-300">100%</span>
+              </div>
+              <input type="range" id="rng-contrast" min="50" max="180" value="100" oninput="applyWindow()" class="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3a Engineered Slice Statistics -->
+        <div class="border-t border-slate-800/80 pt-5">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-3">Slice Telemetry (EDA Features)</h2>
+          <div class="space-y-2 text-xs bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
+            <div class="flex justify-between"><span class="text-slate-500">File Name:</span> <span id="meta-file" class="mono text-slate-200 truncate max-w-[140px]">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Assessed Grid:</span> <span id="meta-res" class="mono text-slate-200">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Inference Time:</span> <span id="meta-ms" class="mono text-emerald-400">—</span></div>
+            <div class="border-t border-slate-800/80 my-1.5"></div>
+            <div class="flex justify-between"><span class="text-slate-500">Foreground Tissue:</span> <span id="eda-fg" class="mono text-slate-300">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Intensity Entropy:</span> <span id="eda-ent" class="mono text-slate-300">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Laplacian Var (Sharpness):</span> <span id="eda-lap" class="mono text-cyan-300">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">HF Residual Median:</span> <span id="eda-hf" class="mono text-slate-300">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons (PNG + Step 9 Official PDF Report) -->
+      <div class="space-y-2.5 pt-4 border-t border-slate-800/80">
+        <button id="btn-pdf" disabled onclick="downloadPDF()" class="w-full py-2.5 px-4 rounded-xl bg-slate-800 text-slate-500 text-xs font-semibold border border-slate-700 transition flex items-center justify-center gap-2">
+          <span>📄 Download Official PDF Report</span>
+        </button>
+        <button id="btn-png" disabled onclick="downloadPNG()" class="w-full py-2 px-4 rounded-xl bg-slate-900 text-slate-500 text-xs font-medium border border-slate-800 transition">
+          ⬇ Export Enhanced Slice (.PNG)
+        </button>
+      </div>
+    </aside>
+
+    <!-- Center Panel: Interactive MRI Canvas -->
+    <section class="col-span-6 glass rounded-2xl relative flex flex-col items-center justify-center overflow-hidden bg-[#030509]">
+      <!-- Empty State -->
+      <div id="empty-state" class="text-center p-8 max-w-sm">
+        <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mx-auto flex items-center justify-center mb-4 text-2xl shadow-inner">
+          🧠
+        </div>
+        <h3 class="text-base font-semibold text-slate-200">No Cranial MRI Loaded</h3>
+        <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+          Upload a 2D axial slice (<span class="mono text-slate-300">.png, .jpg, .tif</span>) or a 3D T1 NIfTI volume (<span class="mono text-slate-300">.nii, .nii.gz</span>). NIfTI uploads automatically extract and pad the canonical mid-axial slice.
+        </p>
+      </div>
+
+      <!-- Mode 1: Split Curtain Comparison -->
+      <div id="view-split" class="hidden relative w-full h-full flex items-center justify-center p-6">
+        <div class="comparison-slider relative rounded-xl overflow-hidden border border-slate-800 shadow-2xl">
+          <img id="split-after" class="block h-[68vh] w-[68vh] object-contain bg-black" src="" alt="Enhanced">
+          <div id="split-clip" class="comparison-overlay border-r-2 border-cyan-400">
+            <img id="split-before" class="block h-[68vh] w-[68vh] max-w-none object-contain bg-black" src="" alt="Uploaded">
+          </div>
+          <span class="absolute top-3 left-3 bg-slate-950/85 border border-slate-700 text-[10px] mono px-2.5 py-1 rounded-md text-slate-300">UPLOADED MRI</span>
+          <span class="absolute top-3 right-3 bg-cyan-950/90 border border-cyan-500/40 text-[10px] mono px-2.5 py-1 rounded-md text-cyan-300">AFTER U-NET</span>
+        </div>
+        <input type="range" id="curtain-slider" min="0" max="100" value="50" oninput="moveCurtain(this.value)" class="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20">
+      </div>
+
+      <!-- Mode 2: Side-by-Side -->
+      <div id="view-side" class="hidden w-full h-full grid grid-cols-2 gap-4 p-6 items-center">
+        <div class="relative rounded-xl overflow-hidden border border-slate-800 bg-black flex flex-col items-center">
+          <img id="side-before" class="w-full h-[58vh] object-contain" src="">
+          <span class="absolute top-3 left-3 bg-slate-950/85 border border-slate-700 text-[10px] mono px-2.5 py-1 rounded text-slate-300">UPLOADED INPUT</span>
+        </div>
+        <div class="relative rounded-xl overflow-hidden border border-cyan-500/30 bg-black flex flex-col items-center">
+          <img id="side-after" class="w-full h-[58vh] object-contain" src="">
+          <span class="absolute top-3 right-3 bg-cyan-950/90 border border-cyan-500/40 text-[10px] mono px-2.5 py-1 rounded text-cyan-300">ENHANCED (U-NET)</span>
+        </div>
+      </div>
+
+      <!-- Mode 3: Magma Residual Correction Map -->
+      <div id="view-error" class="hidden w-full h-full flex flex-col items-center justify-center p-6">
+        <div class="relative rounded-xl overflow-hidden border border-amber-500/30 bg-black">
+          <img id="img-magma" class="h-[68vh] w-[68vh] object-contain" src="">
+          <span class="absolute top-3 left-3 bg-slate-950/90 border border-amber-500/40 text-[10px] mono px-2.5 py-1 rounded text-amber-300">ABSOLUTE U-NET CORRECTION (|AFTER − BEFORE|)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: QualityNet Predictions & Quality Bands -->
+    <aside class="col-span-3 glass rounded-2xl p-5 flex flex-col justify-between overflow-y-auto">
+      <div class="space-y-4">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">QualityNet Classification</h2>
+
+        <!-- Before vs After Quality Band Badges -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="text-[10px] uppercase tracking-wider text-slate-400 block">Uploaded Band</span>
+            <span id="badge-before" class="text-xl font-bold mono mt-1 block text-slate-500">—</span>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="text-[10px] uppercase tracking-wider text-slate-400 block">Enhanced Band</span>
+            <span id="badge-after" class="text-xl font-bold mono mt-1 block text-slate-500">—</span>
+          </div>
+        </div>
+
+        <!-- Estimated SSIM Card -->
+        <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-slate-400 font-medium">Estimated SSIM</span>
+            <span id="ssim-delta" class="text-[11px] mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">—</span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <div>
+              <span class="text-[10px] text-slate-500 block">AFTER U-NET</span>
+              <span id="ssim-after" class="text-2xl font-bold mono text-white">—</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-slate-500 block">UPLOADED</span>
+              <span id="ssim-before" class="text-sm mono text-slate-400">—</span>
+            </div>
+          </div>
+          <!-- Threshold Progress Bar (0.60 Medium, 0.80 Good) -->
+          <div class="relative w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div id="ssim-bar" class="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full w-0 transition-all duration-500"></div>
+          </div>
+          <div class="flex justify-between text-[10px] mono text-slate-500">
+            <span>Bad (&lt;0.60)</span>
+            <span>Med (≥0.60)</span>
+            <span>Good (≥0.80)</span>
+          </div>
+        </div>
+
+        <!-- Estimated PSNR Card -->
+        <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-slate-400 font-medium">Estimated PSNR (dB)</span>
+            <span id="psnr-delta" class="text-[11px] mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">—</span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <div>
+              <span class="text-[10px] text-slate-500 block">AFTER U-NET</span>
+              <span id="psnr-after" class="text-2xl font-bold mono text-white">—</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-slate-500 block">UPLOADED</span>
+              <span id="psnr-before" class="text-sm mono text-slate-400">—</span>
+            </div>
+          </div>
+          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div id="psnr-bar" class="bg-cyan-400 h-full w-0 transition-all duration-500"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Research Scope Notice -->
+      <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/90 text-[11px] text-slate-400 leading-relaxed space-y-1">
+        <div class="text-slate-300 font-semibold">Scope & Thresholds</div>
+        <p>Bands derive from predicted SSIM (<span class="mono text-emerald-400">Good ≥ 0.80</span>, <span class="mono text-amber-400">Medium ≥ 0.60</span>). Trained on OpenNeuro ds000221 T1 cranial MRI with synthetic Gaussian/Rician degradation.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    let currentResult = null;
+    const bandColors = {
+      "Good": "text-emerald-400",
+      "Medium": "text-amber-400",
+      "Bad": "text-rose-400"
+    };
+
+    // Fetch held-out test metrics on startup
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const res = await fetch('/api/model-info');
+        const info = await res.json();
+        if (info.accuracy_pct) {
+          document.getElementById('hdr-acc').innerText = info.accuracy_pct.toFixed(2) + '%';
+          document.getElementById('hdr-bal').innerText = info.balanced_accuracy_pct.toFixed(2) + '%';
+          document.getElementById('hdr-grade').innerText = info.model_quality;
+        }
+      } catch (e) {}
+    });
+
+    async function uploadScan(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const pill = document.getElementById('status-pill');
+      pill.innerText = "● RUNNING U-NET & QUALITYNET...";
+      pill.className = "text-[11px] mono px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40";
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch('/api/analyze', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Analysis failed");
+        currentResult = data;
+        renderResult(data);
+
+        pill.innerText = "● ANALYSIS COMPLETE";
+        pill.className = "text-[11px] mono px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+      } catch (err) {
+        alert("Upload Error: " + err.message);
+        pill.innerText = "● ERROR";
+        pill.className = "text-[11px] mono px-3 py-1.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40";
+      }
+    }
+
+    function renderResult(data) {
+      document.getElementById('empty-state').classList.add('hidden');
+      setViewMode('split');
+
+      // Populate Images
+      ['split-before', 'side-before'].forEach(id => document.getElementById(id).src = data.input_b64);
+      ['split-after', 'side-after'].forEach(id => document.getElementById(id).src = data.enhanced_b64);
+      document.getElementById('img-magma').src = data.magma_b64;
+
+      const r = data.report;
+      const bef = r.before_estimated;
+      const aft = r.after_estimated;
+
+      // Badges
+      const bEl = document.getElementById('badge-before');
+      const aEl = document.getElementById('badge-after');
+      bEl.innerText = bef.quality_label;
+      bEl.className = `text-xl font-bold mono mt-1 block ${bandColors[bef.quality_label]}`;
+      aEl.innerText = aft.quality_label;
+      aEl.className = `text-xl font-bold mono mt-1 block ${bandColors[aft.quality_label]}`;
+
+      // SSIM
+      const ssimGain = aft.estimated_ssim - bef.estimated_ssim;
+      document.getElementById('ssim-before').innerText = bef.estimated_ssim.toFixed(3);
+      document.getElementById('ssim-after').innerText = aft.estimated_ssim.toFixed(3);
+      document.getElementById('ssim-delta').innerText = (ssimGain >= 0 ? '+' : '') + ssimGain.toFixed(3);
+      document.getElementById('ssim-bar').style.width = `${Math.max(0, Math.min(100, aft.estimated_ssim * 100))}%`;
+
+      // PSNR
+      const psnrGain = aft.estimated_psnr_db - bef.estimated_psnr_db;
+      document.getElementById('psnr-before').innerText = bef.estimated_psnr_db.toFixed(2) + ' dB';
+      document.getElementById('psnr-after').innerText = aft.estimated_psnr_db.toFixed(2) + ' dB';
+      document.getElementById('psnr-delta').innerText = (psnrGain >= 0 ? '+' : '') + psnrGain.toFixed(2) + ' dB';
+      document.getElementById('psnr-bar').style.width = `${Math.max(0, Math.min(100, (aft.estimated_psnr_db / 45) * 100))}%`;
+
+      // Telemetry & Step 3a EDA stats
+      document.getElementById('meta-file').innerText = r.uploaded_filename;
+      document.getElementById('meta-res').innerText = `${r.assessed_resolution[0]} × ${r.assessed_resolution[1]} px`;
+      document.getElementById('meta-ms').innerText = `${r.pipeline_ms.toFixed(1)} ms`;
+      document.getElementById('eda-fg').innerText = (data.eda.foreground_fraction * 100).toFixed(1) + '%';
+      document.getElementById('eda-ent').innerText = data.eda.intensity_entropy.toFixed(3);
+      document.getElementById('eda-lap').innerText = `${data.eda.lap_before.toFixed(4)} → ${data.eda.lap_after.toFixed(4)}`;
+      document.getElementById('eda-hf').innerText = data.eda.high_frequency_residual_median.toFixed(4);
+
+      // Enable Downloads
+      const btnPdf = document.getElementById('btn-pdf');
+      btnPdf.disabled = false;
+      btnPdf.className = "w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer";
+
+      const btnPng = document.getElementById('btn-png');
+      btnPng.disabled = false;
+      btnPng.className = "w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer";
+    }
+
+    function moveCurtain(val) {
+      document.getElementById('split-clip').style.width = val + '%';
+    }
+
+    function setViewMode(mode) {
+      if (!currentResult) return;
+      ['split', 'side', 'error'].forEach(m => {
+        document.getElementById('view-' + m).classList.add('hidden');
+        document.getElementById('mode-' + m).className = "text-xs py-2 rounded-lg text-slate-400 hover:text-white transition";
+      });
+      document.getElementById('view-' + mode).classList.remove('hidden');
+      document.getElementById('mode-' + mode).className = "text-xs py-2 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-medium transition";
+    }
+
+    function applyWindow() {
+      const b = document.getElementById('rng-bright').value;
+      const c = document.getElementById('rng-contrast').value;
+      document.getElementById('lbl-bright').innerText = b + '%';
+      document.getElementById('lbl-contrast').innerText = c + '%';
+      const f = `brightness(${b}%) contrast(${c}%)`;
+      ['split-before', 'split-after', 'side-before', 'side-after'].forEach(id => {
+        document.getElementById(id).style.filter = f;
+      });
+    }
+
+    function resetWindow() {
+      document.getElementById('rng-bright').value = 100;
+      document.getElementById('rng-contrast').value = 100;
+      applyWindow();
+    }
+
+    function downloadPNG() {
+      if (!currentResult) return;
+      const a = document.createElement('a');
+      a.href = currentResult.enhanced_b64;
+      a.download = 'Group06_Enhanced_' + currentResult.report.uploaded_filename + '.png';
+      a.click();
+    }
+
+    function downloadPDF() {
+      window.open('/api/download-pdf', '_blank');
+    }
+  </script>
+</body>
+</html>

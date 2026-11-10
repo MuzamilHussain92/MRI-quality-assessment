@@ -1,6 +1,4 @@
-#@title 2a. Load project functions (advanced code)
-from pathlib import Path
-FINAL_MODEL_SOURCE = r'''
+
 """Group 06: cranial MRI enhancement and quality assessment.
 
 The Colab notebook embeds this module, so uploading the notebook alone is enough.
@@ -790,10 +788,3 @@ def load_demo_image(file, image_size):
         raise ValueError("The image is empty or constant. Upload a visible brain MRI slice.")
     return result
 
-'''
-
-FINAL_MODEL_PATH = Path('/content/mri_quality_final.py') if Path('/content').is_dir() else Path('mri_quality_final.py')
-FINAL_MODEL_PATH.write_text(FINAL_MODEL_SOURCE, encoding='utf-8')
-exec(compile(FINAL_MODEL_SOURCE, str(FINAL_MODEL_PATH), 'exec'), globals())
-FINAL_STEP_SOURCES = {}
-print('Project functions loaded. Continue to settings.')
