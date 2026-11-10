@@ -14,7 +14,7 @@ from mri_quality_final import (
 # Page Configuration - Dark PACS Workstation Theme
 st.set_page_config(
     page_title="Group 06 | Cranial MRI Workstation",
-    page_layout="wide",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
